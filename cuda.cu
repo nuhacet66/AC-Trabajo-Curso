@@ -39,12 +39,12 @@ int main() {
     size_t size = MATRIX_SIZE * MATRIX_SIZE * sizeof(int);
     srand(time(NULL));
 
-    clock_t start = clock();
-
+    // Allocate memory on host
     host_matrix_a = (int *)malloc(size);
     host_matrix_b = (int *)malloc(size);
     host_matrix_result = (int *)malloc(size);
 
+    // Initialize matrices on host
     for (int i = 0; i < MATRIX_SIZE * MATRIX_SIZE; i++) {
         host_matrix_a[i] = rand() % 10;
         host_matrix_b[i] = rand() % 10;
@@ -55,32 +55,55 @@ int main() {
     printf("Matrix B:\n");
     print_matrix(host_matrix_b);
 
+    // Allocate memory on device
     cudaMalloc(&device_matrix_a, size);
     cudaMalloc(&device_matrix_b, size);
     cudaMalloc(&device_matrix_result, size);
 
+    // Copy matrices from host to device
     cudaMemcpy(device_matrix_a, host_matrix_a, size, cudaMemcpyHostToDevice);
     cudaMemcpy(device_matrix_b, host_matrix_b, size, cudaMemcpyHostToDevice);
 
+    // Initialize result matrix on host
     memset(host_matrix_result, 0, size);
 
+    // Define block and grid sizes
     dim3 threadsPerBlock(BLOCK_SIZE, BLOCK_SIZE);
     dim3 numBlocks(MATRIX_SIZE / threadsPerBlock.x, MATRIX_SIZE / threadsPerBlock.y);
 
+    // Create CUDA events for timing
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+
+    // Start recording events
+    cudaEventRecord(start);
+
+    // Launch kernel
     multiply_matrices<<<numBlocks, threadsPerBlock>>>(device_matrix_a, device_matrix_b, device_matrix_result);
 
-    cudaDeviceSynchronize();
+    // Stop recording events
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
 
+    // Check for errors during kernel execution
     cudaError_t error = cudaGetLastError();
     if (error != cudaSuccess) {
         printf("CUDA Error: %s\n", cudaGetErrorString(error));
     }
 
+    // Calculate elapsed time
+    float milliseconds = 0;
+    cudaEventElapsedTime(&milliseconds, start, stop);
+
+    // Copy result matrix from device to host
     cudaMemcpy(host_matrix_result, device_matrix_result, size, cudaMemcpyDeviceToHost);
 
+    // Print result matrix
     printf("Matrix Result:\n");
     print_matrix(host_matrix_result);
 
+    // Free host and device memory
     free(host_matrix_a);
     free(host_matrix_b);
     free(host_matrix_result);
@@ -88,8 +111,13 @@ int main() {
     cudaFree(device_matrix_b);
     cudaFree(device_matrix_result);
 
+    // Destroy CUDA events
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+
+    // Print execution time
     printf("\n-------------------\n");
-    printf("Execution Time (CPU): %f seconds\n", ((double) clock() - start) / CLOCKS_PER_SEC);
+    printf("Execution Time (GPU): %f milliseconds\n", milliseconds);
 
     return 0;
 }
